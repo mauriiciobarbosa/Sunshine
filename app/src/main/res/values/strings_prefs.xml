@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <string name="pref_location_key" translatable="false">location</string>
+    <string name="pref_location_default_value" translatable="false">94043</string>
+    <string name="pref_temperature_key" translatable="false">temperature</string>
+    <string name="pref_temperature_default_value" translatable="false">@string/pref_units_metric</string>
+    <string name="pref_units_imperial" translatable="false">imperial</string>
+    <string name="pref_units_metric" translatable="false">metric</string>
+
+    <string-array name="temperature_units">
+        <item>Metric</item>
+        <item>Imperial</item>
+    </string-array>
+
+    <string-array name="temperature_unit_values">
+        <item>@string/pref_units_metric</item>
+        <item>@string/pref_units_imperial</item>
+    </string-array>
+
+</resources>

@@ -1,8 +1,12 @@
 package com.example.android.sunshine.app;
 
+import android.content.Context;
+import android.content.Intent;
+import android.content.SharedPreferences;
 import android.net.Uri;
 import android.os.AsyncTask;
 import android.os.Bundle;
+import android.preference.PreferenceManager;
 import android.support.annotation.Nullable;
 import android.support.v4.app.Fragment;
 import android.util.Log;
@@ -15,7 +19,6 @@ import android.view.ViewGroup;
 import android.widget.AdapterView;
 import android.widget.ArrayAdapter;
 import android.widget.ListView;
-import android.widget.Toast;
 
 import com.example.android.sunshine.app.utils.SunshineUtils;
 
@@ -39,7 +42,8 @@ public class ForeCastFragment extends Fragment implements AdapterView.OnItemClic
     protected ArrayAdapter<String> arrayAdapter;
     protected ListView listView;
 
-    public ForeCastFragment() {}
+    public ForeCastFragment() {
+    }
 
     @Override
     public void onCreate(@Nullable Bundle savedInstanceState) {
@@ -54,15 +58,19 @@ public class ForeCastFragment extends Fragment implements AdapterView.OnItemClic
 
         listView = (ListView) rootView.findViewById(R.id.listview_forecast);
 
-        List<String> forecastArray = getForecastDataFake();
-
         arrayAdapter = new ArrayAdapter<>(getActivity(), R.layout.list_item_forecast,
-                R.id.list_item_forecast_textview, forecastArray);
+                R.id.list_item_forecast_textview, new ArrayList<String>());
 
         listView.setAdapter(arrayAdapter);
         listView.setOnItemClickListener(this);
 
         return rootView;
+    }
+
+    @Override
+    public void onStart() {
+        super.onStart();
+        updateWeather();
     }
 
     @Override
@@ -74,33 +82,52 @@ public class ForeCastFragment extends Fragment implements AdapterView.OnItemClic
     public boolean onOptionsItemSelected(MenuItem item) {
         switch (item.getItemId()) {
             case R.id.action_refresh:
-                updateList();
+                updateWeather();
+                return true;
+            case R.id.action_show_location:
+                String location = getPreferenceValue(getString(R.string.pref_location_key), getString(R.string.pref_location_default_value));
+                Uri geoLocation = Uri.parse("geo:0,0:?q=" + location);
+                showMap(geoLocation);
                 return true;
             default:
                 return super.onOptionsItemSelected(item);
         }
     }
 
+    private void showMap(Uri geoLocation) {
+        Intent intent = new Intent(Intent.ACTION_VIEW);
+        intent.setData(geoLocation);
+
+        if (intent.resolveActivity(getActivity().getPackageManager()) != null) {
+            startActivity(intent);
+        } else {
+            Log.e(LOG_TAG, "No activity to resolve");
+        }
+
+    }
+
     @Override
     public void onItemClick(AdapterView<?> parent, View view, int position, long id) {
         String forecast = arrayAdapter.getItem(position);
-        Toast.makeText(getContext(), forecast, Toast.LENGTH_SHORT).show();
+
+        Intent intent = new Intent(getContext(), DetailActivity.class);
+        intent.putExtra(DetailActivity.PARAM_FORECAST, forecast);
+
+        startActivity(intent);
     }
 
-    private void updateList() {
+    private void updateWeather() {
         FetchWeatherTask task = new FetchWeatherTask();
-        task.execute("94043");
+
+        String location = getPreferenceValue(getString(R.string.pref_location_key), getString(R.string.pref_location_default_value));
+        String unit = getPreferenceValue(getString(R.string.pref_temperature_key), getString(R.string.pref_temperature_default_value));
+
+        task.execute(location, unit);
     }
 
-    private List<String> getForecastDataFake() {
-        List<String> forecastData = new ArrayList<>();
-        forecastData.add("Today - Sunny - 88/63");
-        forecastData.add("Tomorrow - Foggy - 70/46");
-        forecastData.add("Weds - Cloudy - 72/63");
-        forecastData.add("Thurs - Rainy - 64/51");
-        forecastData.add("Fri - Foggy - 70/46");
-        forecastData.add("Sat - Sunny - 76/68");
-        return forecastData;
+    public String getPreferenceValue(String key, String defaultValue) {
+        SharedPreferences sharedPreferences = PreferenceManager.getDefaultSharedPreferences(getActivity());
+        return sharedPreferences.getString(key, defaultValue);
     }
 
     private class FetchWeatherTask extends AsyncTask<String, Void, List<String>> {
@@ -126,14 +153,20 @@ public class ForeCastFragment extends Fragment implements AdapterView.OnItemClic
                 // Possible parameters are avaiable at OWM's forecast API page, at
                 // http://openweathermap.org/API#forecast
 
-                if (params.length == 0) return null;
+                if (params.length < 2) return null;
+
+                String location = params[0];
+                String unit = params[1];
+                String format = "json";
+                String days = "7";
+                String key = "bc198534cb37f8fc38c6de947adeb97a";
 
                 Uri builtUri = Uri.parse("http://api.openweathermap.org/data/2.5/forecast/daily?").buildUpon()
-                        .appendQueryParameter(QUERY_PARAM, params[0])
-                        .appendQueryParameter(FORMAT_PARAM, "json")
-                        .appendQueryParameter(UNITS_PARAM, "metric")
-                        .appendQueryParameter(DAYS_PARAM, "7")
-                        .appendQueryParameter(KEY_PARAM, "bc198534cb37f8fc38c6de947adeb97a").build();
+                        .appendQueryParameter(QUERY_PARAM, location)
+                        .appendQueryParameter(FORMAT_PARAM, format)
+                        .appendQueryParameter(UNITS_PARAM, unit)
+                        .appendQueryParameter(DAYS_PARAM, days)
+                        .appendQueryParameter(KEY_PARAM, key).build();
 
                 Log.v(LOG_TAG, "URI : " + builtUri.toString());
 
@@ -168,12 +201,12 @@ public class ForeCastFragment extends Fragment implements AdapterView.OnItemClic
 
                 forecastJsonStr = buffer.toString();
 
-                result = Arrays.asList(SunshineUtils.getWeatherDataFromJson(forecastJsonStr, 7));
+                result = Arrays.asList(SunshineUtils.getWeatherDataFromJson(getContext(), forecastJsonStr, 7, unit));
 
             } catch (Exception e) {
                 Log.e("PlaceholderFragment", "Error ", e);
                 return null;
-            } finally{
+            } finally {
                 if (urlConnection != null) {
                     urlConnection.disconnect();
                 }
@@ -192,8 +225,9 @@ public class ForeCastFragment extends Fragment implements AdapterView.OnItemClic
         @Override
         protected void onPostExecute(List<String> forecast) {
             arrayAdapter.clear();
-            arrayAdapter.addAll(forecast);
+            if (forecast != null) arrayAdapter.addAll(forecast);
         }
+
     }
 
 }
